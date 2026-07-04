@@ -1,0 +1,9 @@
+name: GitForMinecraft
+description: $description
+version: '${version}'
+
+main: top.haohao3001.gfm.GitForMinecraft
+api-version: '1.21.11'
+
+authors: [haohao3001]
+website: haohao3001.top

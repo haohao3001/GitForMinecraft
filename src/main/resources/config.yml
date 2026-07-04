@@ -1,0 +1,33 @@
+# GitForMinecraft Configuration
+
+# Webhook server settings
+webhook:
+  # Port to listen on (set to 0 to disable)
+  port: 8080
+  # URL path (e.g. http://your-server:8080/gfm)
+  path: gfm
+  # Expected branch name (ignores pushes to other branches)
+  branch: main
+
+# CICD commands in commit messages (e.g. "CICD run say hello")
+cicd-commands:
+  enabled: true
+  # Allow running scripts from the scripts/ folder via "CICD script <name>"
+  allow-scripts: false
+
+# File-based hooks: execute commands when specific files change
+file-hooks:
+  enabled: true
+  rules:
+    # Example: when any file under plugins/ changes, reload via PlugManX
+    # {file} = full file path, {parent} = parent directory, {dir1} = first path segment, etc.
+    # - pattern: "plugins/**"
+    #   on-change: "plugman reload {dir2}"
+    #
+    # Example: when server.properties changes, notify players
+    # - pattern: "server.properties"
+    #   on-change: "say Server config was updated via git!"
+    #
+    # Example: when a specific plugin's config changes
+    # - pattern: "plugins/MyPlugin/*"
+    #   on-change: "plugman reload MyPlugin"
