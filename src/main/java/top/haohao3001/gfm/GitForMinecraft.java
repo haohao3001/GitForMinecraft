@@ -90,7 +90,7 @@ public final class GitForMinecraft extends JavaPlugin {
 
     private void saveDefaultScript() {
         File scriptsDir = new File(getDataFolder(), "scripts");
-        File exampleScript = new File(scriptsDir, "example.sh");
+        File exampleScript = new File(scriptsDir, "auto-pull.sh");
         if (exampleScript.exists()) return;
         scriptsDir.mkdirs();
 

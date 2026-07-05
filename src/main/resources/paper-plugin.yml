@@ -1,5 +1,5 @@
 name: GitForMinecraft
-description: $description
+description: '${description}'
 version: '${version}'
 
 main: top.haohao3001.gfm.GitForMinecraft

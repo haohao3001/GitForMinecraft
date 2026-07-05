@@ -8,6 +8,7 @@ import top.haohao3001.gfm.GitForMinecraft;
 import top.haohao3001.gfm.executor.ChangeNotifier;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.logging.Level;
 
@@ -31,23 +32,25 @@ public class WebhookHandler implements HttpHandler {
     @Override
     public void handle(HttpExchange exchange) {
         try {
-            // Read request body (same approach as MineCICD)
+            // Read request body with proper UTF-8 decoding
             StringBuilder bodyBuilder = new StringBuilder();
-            InputStream ios = exchange.getRequestBody();
-            int remaining = MAX_BODY_SIZE;
-            int b;
-            while ((b = ios.read()) != -1 && remaining-- > 0) {
-                bodyBuilder.append((char) b);
+            InputStreamReader reader = new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8);
+            char[] buf = new char[4096];
+            int totalChars = 0;
+            int charsRead;
+            while ((charsRead = reader.read(buf, 0, Math.min(buf.length, MAX_BODY_SIZE - totalChars))) != -1 && totalChars < MAX_BODY_SIZE) {
+                bodyBuilder.append(buf, 0, charsRead);
+                totalChars += charsRead;
             }
 
-            if (remaining <= 0) {
+            if (totalChars >= MAX_BODY_SIZE) {
                 exchange.sendResponseHeaders(400, 0);
                 plugin.getLogger().log(Level.WARNING, "Webhook body exceeded maximum size of " + MAX_BODY_SIZE + " bytes");
                 return;
             }
 
             // Respond immediately to avoid GitHub timeout
-            String response = "OK";
+            String response = "200 OK";
             exchange.sendResponseHeaders(200, response.length());
             OutputStream os = exchange.getResponseBody();
             os.write(response.getBytes());
@@ -89,13 +92,9 @@ public class WebhookHandler implements HttpHandler {
         Set<String> removedFiles = new LinkedHashSet<>();
 
         // Parse CICD commands from all commit messages
-        List<String> cicdCommands = new ArrayList<>();
-        List<String> scripts = new ArrayList<>();
-        boolean cicdReload = false;
-        boolean cicdRestart = false;
+        CicdParseResult cicdResult = new CicdParseResult(new ArrayList<>(), new ArrayList<>(), false, false);
 
         String authorName = "Unknown";
-        String timestamp = "";
 
         List<PushEvent.Commit> commits = event.getCommits();
         PushEvent.Commit headCommit = event.getHeadCommit();
@@ -107,15 +106,14 @@ public class WebhookHandler implements HttpHandler {
                 if (commit.getModified() != null) modifiedFiles.addAll(commit.getModified());
                 if (commit.getRemoved() != null) removedFiles.addAll(commit.getRemoved());
 
-                // Parse CICD commands from commit message
-                parseCicdCommands(commit.getMessage(), cicdCommands, scripts);
+                // Parse CICD commands from commit message and merge
+                if (commit.getMessage() != null) {
+                    cicdResult = cicdResult.merge(parseCicdCommands(commit.getMessage()));
+                }
 
                 // Track author from latest commit
                 if (commit.getAuthor() != null) {
                     authorName = commit.getAuthor().getName();
-                }
-                if (commit.getTimestamp() != null) {
-                    timestamp = commit.getTimestamp();
                 }
             }
         }
@@ -126,9 +124,10 @@ public class WebhookHandler implements HttpHandler {
                 if (headCommit.getAdded() != null) addedFiles.addAll(headCommit.getAdded());
                 if (headCommit.getModified() != null) modifiedFiles.addAll(headCommit.getModified());
                 if (headCommit.getRemoved() != null) removedFiles.addAll(headCommit.getRemoved());
-                parseCicdCommands(headCommit.getMessage(), cicdCommands, scripts);
+                if (headCommit.getMessage() != null) {
+                    cicdResult = cicdResult.merge(parseCicdCommands(headCommit.getMessage()));
+                }
                 if (headCommit.getAuthor() != null) authorName = headCommit.getAuthor().getName();
-                if (headCommit.getTimestamp() != null) timestamp = headCommit.getTimestamp();
             }
         }
 
@@ -139,6 +138,16 @@ public class WebhookHandler implements HttpHandler {
 
         // Notify online players of changes
         ChangeNotifier.notifyChanges(authorName, addedFiles, modifiedFiles, removedFiles);
+
+        // Auto-pull: run scripts/auto-pull.sh if configured
+        if (plugin.getConfig().getBoolean("webhook.auto-pull", false)) {
+            plugin.getLogger().log(Level.INFO, "Auto-pull enabled, executing auto-pull.sh...");
+            try {
+                plugin.runScript("auto-pull");
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.SEVERE, "auto-pull.sh failed", e);
+            }
+        }
 
         // Execute hook rules based on changed files
         if (plugin.getConfig().getBoolean("file-hooks.enabled", true)) {
@@ -152,7 +161,7 @@ public class WebhookHandler implements HttpHandler {
 
         // Execute CICD run commands
         if (plugin.getConfig().getBoolean("cicd-commands.enabled", true)) {
-            for (String cmd : cicdCommands) {
+            for (String cmd : cicdResult.commands()) {
                 plugin.getLogger().log(Level.INFO, "Executing CICD run: " + cmd);
                 Bukkit.getScheduler().runTask(plugin, () ->
                         Bukkit.dispatchCommand(Bukkit.getConsoleSender(), cmd));
@@ -161,7 +170,7 @@ public class WebhookHandler implements HttpHandler {
 
         // Execute CICD script commands
         if (plugin.getConfig().getBoolean("cicd-commands.allow-scripts", false)) {
-            for (String script : scripts) {
+            for (String script : cicdResult.scripts()) {
                 plugin.getLogger().log(Level.INFO, "Executing CICD script: " + script);
                 try {
                     plugin.runScript(script);
@@ -172,13 +181,13 @@ public class WebhookHandler implements HttpHandler {
         }
 
         // Handle CICD reload (global reload)
-        if (cicdReload) {
+        if (cicdResult.reload()) {
             plugin.getLogger().log(Level.INFO, "CICD global-reload triggered");
             Bukkit.getScheduler().runTask(plugin, Bukkit::reload);
         }
 
         // Handle CICD restart
-        if (cicdRestart) {
+        if (cicdResult.restart()) {
             plugin.getLogger().log(Level.INFO, "CICD restart triggered");
             Bukkit.getScheduler().runTask(plugin, Bukkit::shutdown);
         }
@@ -187,9 +196,14 @@ public class WebhookHandler implements HttpHandler {
     /**
      * Parse CICD commands from a commit message.
      * Format: lines starting with "CICD" followed by a command.
+     *
+     * @return CicdParseResult containing extracted commands, scripts, and flags
      */
-    private void parseCicdCommands(String message, List<String> commands, List<String> scripts) {
-        if (message == null || message.isEmpty()) return;
+    private CicdParseResult parseCicdCommands(String message) {
+        List<String> commands = new ArrayList<>();
+        List<String> scripts = new ArrayList<>();
+        boolean reload = false;
+        boolean restart = false;
 
         String[] lines = message.split("\n");
         for (String line : lines) {
@@ -204,13 +218,15 @@ public class WebhookHandler implements HttpHandler {
                     scripts.add(command.substring(7).trim());
                 }
             } else if (command.equals("global-reload")) {
-                // Handled by the caller
+                reload = true;
             } else if (command.equals("restart")) {
-                // Handled by the caller
+                restart = true;
             } else {
                 plugin.getLogger().log(Level.WARNING, "Unknown CICD command: " + command);
             }
         }
+
+        return new CicdParseResult(commands, scripts, reload, restart);
     }
 
     /**

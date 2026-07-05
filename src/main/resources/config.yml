@@ -8,6 +8,8 @@ webhook:
   path: gfm
   # Expected branch name (ignores pushes to other branches)
   branch: main
+  # Auto-run scripts/auto-pull.sh on every webhook (before hooks & CICD)
+  auto-pull: false
 
 # CICD commands in commit messages (e.g. "CICD run say hello")
 cicd-commands:
