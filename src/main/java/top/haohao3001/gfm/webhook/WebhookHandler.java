@@ -234,15 +234,17 @@ public class WebhookHandler implements HttpHandler {
      */
     private void executeFileHooks(Set<String> changedFiles) {
         List<Map<?, ?>> hookList = plugin.getConfig().getMapList("file-hooks.rules");
-        if (hookList == null || hookList.isEmpty()) return;
+        if (hookList.isEmpty()) return;
 
         for (Map<?, ?> rule : hookList) {
             String pattern = (String) rule.get("pattern");
             String onChanged = (String) rule.get("on-change");
             if (pattern == null || onChanged == null) continue;
 
+            boolean firstMatched = false;
             for (String file : changedFiles) {
-                if (pathMatches(file, pattern)) {
+                if (!firstMatched&&pathMatches(file, pattern)) {
+                    firstMatched=true;
                     String resolved = resolvePlaceholders(onChanged, file, pattern);
                     plugin.getLogger().log(Level.INFO, "Hook triggered: [" + pattern + "] matched " + file + " → " + resolved);
                     Bukkit.getScheduler().runTask(plugin, () ->
