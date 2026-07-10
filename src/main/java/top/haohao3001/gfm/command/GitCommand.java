@@ -13,14 +13,14 @@ import java.util.function.Predicate;
 
 public class GitCommand {
     public static void register(Plugin plugin,Commands commands){
-        LiteralArgumentBuilder<CommandSourceStack> command = Commands.literal("git")
+        LiteralArgumentBuilder<CommandSourceStack> command = Commands.literal("gfm")
                 .then(buildNotifyCommand())
                 .then(buildReloadConfigCommand(plugin));
         commands.register(command.build());
     }
 
     public static LiteralArgumentBuilder<CommandSourceStack> buildNotifyCommand(){
-        LiteralArgumentBuilder<CommandSourceStack> command = Commands.literal("reloadconfig")
+        LiteralArgumentBuilder<CommandSourceStack> command = Commands.literal("notify")
                 .requires(hasPermission("gitforminecraft.notify.send"))
                 .then(Commands.argument("text", ArgumentTypes.component())
                         .executes(context -> {
@@ -40,6 +40,7 @@ public class GitCommand {
                 .requires(hasPermission("gitforminecraft.reloadconfig"))
                 .executes(context -> {
                     plugin.reloadConfig();
+                    context.getSource().getSender().sendMessage(Component.text("已重载配置文件"));
                     return 0;
                 });
         return command;

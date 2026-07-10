@@ -1,15 +1,17 @@
 package top.haohao3001.gfm;
 
-import io.papermc.paper.plugin.lifecycle.event.LifecycleEvent;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
-import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.permissions.Permission;
+import org.bukkit.permissions.PermissionDefault;
 import org.bukkit.plugin.java.JavaPlugin;
 import top.haohao3001.gfm.command.GitCommand;
 import top.haohao3001.gfm.webhook.WebhookHandler;
 import top.haohao3001.gfm.webhook.WebhookServer;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.util.List;
 import java.util.logging.Level;
@@ -89,5 +91,17 @@ public final class GitForMinecraft extends JavaPlugin {
         this.getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, commands -> {
             GitCommand.register(this,commands.registrar());
         });
+        Permission sendNotify = new Permission("gitforminecraft.notify.send",
+                "发送Git通知",
+                PermissionDefault.OP);
+        Permission receiveNotify = new Permission("gitforminecraft.notify.receive",
+                "接受Git的通知",
+                PermissionDefault.OP);
+        Permission reloadConfig = new Permission("gitforminecraft.notify.send",
+                "重载配置文件",
+                PermissionDefault.OP);
+        this.getServer().getPluginManager().addPermission(sendNotify);
+        this.getServer().getPluginManager().addPermission(receiveNotify);
+        this.getServer().getPluginManager().addPermission(reloadConfig);
     }
 }
