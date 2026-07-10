@@ -7,9 +7,9 @@ webhook:
   # URL path (e.g. http://your-server:8080/gfm)
   path: gfm
   # Expected branch name (ignores pushes to other branches)
-  branch: main
+  branch: master
   # Auto-run scripts/auto-pull.sh on every webhook (before hooks & CICD)
-  auto-pull: false
+  auto-pull: true
 
 # CICD commands in commit messages (e.g. "CICD run say hello")
 cicd-commands:
@@ -22,14 +22,13 @@ file-hooks:
   enabled: true
   rules:
     # Example: when any file under plugins/ changes, reload via PlugManX
-    # {file} = full file path, {parent} = parent directory, {dir1} = first path segment, etc.
     # - pattern: "plugins/**"
-    #   on-change: "plugman reload {dir2}"
+    #   on-change: "script1.sh"
     #
     # Example: when server.properties changes, notify players
     # - pattern: "server.properties"
-    #   on-change: "say Server config was updated via git!"
+    #   on-change: "script2.sh"
     #
     # Example: when a specific plugin's config changes
     # - pattern: "plugins/MyPlugin/*"
-    #   on-change: "plugman reload MyPlugin"
+    #   on-change: "script3.sh"

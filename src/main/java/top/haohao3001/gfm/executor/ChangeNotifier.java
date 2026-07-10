@@ -26,7 +26,7 @@ public class ChangeNotifier {
                 .append(Component.text(" GitForMinecraft ", NamedTextColor.GOLD))
                 .append(Component.text("── ", NamedTextColor.DARK_GRAY, TextDecoration.STRIKETHROUGH))
                 .append(Component.newline())
-                .append(Component.text(" Push by ", NamedTextColor.GRAY))
+                .append(Component.text("推送自:", NamedTextColor.GRAY))
                 .append(Component.text(author, NamedTextColor.YELLOW))
                 .build();
 
@@ -45,7 +45,7 @@ public class ChangeNotifier {
         Component footer = Component.text("────────────────────────────────", NamedTextColor.DARK_GRAY, TextDecoration.STRIKETHROUGH);
 
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (!player.hasPermission("gfm.notify")) continue;
+            if (!player.hasPermission("gfm.notify.receive")) continue;
 
             player.sendMessage(header);
             for (Component line : lines) {

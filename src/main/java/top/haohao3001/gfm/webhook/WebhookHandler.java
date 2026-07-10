@@ -9,6 +9,7 @@ import top.haohao3001.gfm.executor.ChangeNotifier;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.logging.Level;
 
@@ -143,7 +144,7 @@ public class WebhookHandler implements HttpHandler {
         if (plugin.getConfig().getBoolean("webhook.auto-pull", false)) {
             plugin.getLogger().log(Level.INFO, "Auto-pull enabled, executing auto-pull.sh...");
             try {
-                plugin.runScript("auto-pull");
+                runScript("auto-pull");
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "auto-pull.sh failed", e);
             }
@@ -173,7 +174,7 @@ public class WebhookHandler implements HttpHandler {
             for (String script : cicdResult.scripts()) {
                 plugin.getLogger().log(Level.INFO, "Executing CICD script: " + script);
                 try {
-                    plugin.runScript(script);
+                    runScript(script);
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Failed to run script '" + script + "'", e);
                 }
@@ -245,10 +246,12 @@ public class WebhookHandler implements HttpHandler {
             for (String file : changedFiles) {
                 if (!firstMatched&&pathMatches(file, pattern)) {
                     firstMatched=true;
-                    String resolved = resolvePlaceholders(onChanged, file, pattern);
-                    plugin.getLogger().log(Level.INFO, "Hook triggered: [" + pattern + "] matched " + file + " → " + resolved);
-                    Bukkit.getScheduler().runTask(plugin, () ->
-                            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), resolved));
+                    plugin.getLogger().log(Level.INFO, "Hook triggered: [" + pattern + "] matched " + file);
+                    try {
+                        runScript(onChanged);
+                    } catch (Exception e) {
+                        plugin.getLogger().log(Level.SEVERE,"Fail to run script:" + onChanged,e);
+                    }
                 }
             }
         }
@@ -289,5 +292,39 @@ public class WebhookHandler implements HttpHandler {
         }
 
         return result;
+    }
+
+    /**
+     * Run a script from the scripts folder (similar to MineCICD's Script.run()).
+     */
+    public void runScript(String scriptName) throws Exception {
+        File scriptsFolder = new File(plugin.getDataFolder(), "scripts");
+        File scriptFile = new File(scriptsFolder, scriptName + ".sh");
+        if (!scriptFile.exists()) {
+            throw new FileNotFoundException("Script not found: " + scriptName + ".sh");
+        }
+
+        List<String> lines = Files.readAllLines(scriptFile.toPath());
+
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i).trim();
+            if (line.isEmpty() || line.startsWith("#")) continue;
+
+            if (line.startsWith("! ")) {
+                // System command
+                ProcessBuilder pb = new ProcessBuilder(line.substring(2).split(" "));
+                pb.inheritIO();
+                Process process = pb.start();
+                int exitCode = process.waitFor();
+                if (exitCode != 0) {
+                    plugin.getLogger().log(Level.WARNING, "Script '" + scriptName + "' line " + (i + 1)
+                            + " exited with code " + exitCode);
+                }
+            } else {
+                // Bukkit console command
+                Bukkit.getScheduler().runTask(plugin, () ->
+                        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), line));
+            }
+        }
     }
 }
