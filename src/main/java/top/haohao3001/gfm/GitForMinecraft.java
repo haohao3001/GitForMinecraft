@@ -81,9 +81,8 @@ public final class GitForMinecraft extends JavaPlugin {
                 }
             } else {
                 // Bukkit console command
-                String finalCmd = line;
                 Bukkit.getScheduler().runTask(this, () ->
-                        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), finalCmd));
+                        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), line));
             }
         }
     }
