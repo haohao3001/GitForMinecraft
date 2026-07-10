@@ -47,7 +47,7 @@ public class ChangeNotifier {
         Component footer = Component.text("────────────────────────────────", NamedTextColor.DARK_GRAY, TextDecoration.STRIKETHROUGH);
 
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (!player.hasPermission("gfm.notify.receive")) continue;
+            if (!player.hasPermission("gitforminecraft.notify.receive")) continue;
 
             player.sendMessage(header);
             for (Component line : lines) {

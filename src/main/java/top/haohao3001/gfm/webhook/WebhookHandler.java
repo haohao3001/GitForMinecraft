@@ -45,30 +45,27 @@ public class WebhookHandler implements HttpHandler {
             }
 
             if (totalChars >= MAX_BODY_SIZE) {
-                exchange.sendResponseHeaders(400, 0);
-                plugin.getLogger().log(Level.WARNING, "Webhook body exceeded maximum size of " + MAX_BODY_SIZE + " bytes");
+                String msg = "Webhook body exceeded maximum size of " + MAX_BODY_SIZE + " bytes";
+                plugin.getLogger().log(Level.WARNING,msg);
+                sendResponseAndCloseConnect(exchange,400,msg);
                 return;
             }
-
-            // Respond immediately to avoid GitHub timeout
-            String response = "200 OK";
-            exchange.sendResponseHeaders(200, response.length());
-            OutputStream os = exchange.getResponseBody();
-            os.write(response.getBytes());
-            os.close();
 
             // Parse push event
             PushEvent event = gson.fromJson(bodyBuilder.toString(), PushEvent.class);
             if (event == null || event.getRef() == null) {
-                plugin.getLogger().log(Level.WARNING, "Received invalid webhook payload");
+                String msg = "Received invalid webhook payload";
+                plugin.getLogger().log(Level.WARNING, msg);
+                sendResponseAndCloseConnect(exchange,400,msg);
                 return;
             }
 
             // Validate branch
             String branch = event.getBranch();
             if (!branch.equals(expectedBranch)) {
-                plugin.getLogger().log(Level.INFO,
-                        "Received webhook for branch '" + branch + "' but expected '" + expectedBranch + "', ignoring");
+                String msg = "Received webhook for branch '" + branch + "' but expected '" + expectedBranch + "', ignoring";
+                plugin.getLogger().log(Level.INFO, msg);
+                sendResponseAndCloseConnect(exchange,400,msg);
                 return;
             }
 
@@ -77,13 +74,23 @@ public class WebhookHandler implements HttpHandler {
             // Process asynchronously on Bukkit scheduler
             Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> processEvent(event));
 
+            sendResponseAndCloseConnect(exchange,200,"200 OK");
+
         } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "Failed to process webhook request", e);
+            String msg = "Failed to process webhook request";
+            plugin.getLogger().log(Level.SEVERE, msg, e);
             try {
-                exchange.sendResponseHeaders(500, 0);
+                sendResponseAndCloseConnect(exchange,500,msg);
             } catch (IOException ignored) {
             }
         }
+    }
+
+    public void sendResponseAndCloseConnect(HttpExchange exchange,int responseCode,String responseMessage) throws IOException {
+        exchange.sendResponseHeaders(responseCode, responseMessage.length());
+        OutputStream os = exchange.getResponseBody();
+        os.write(responseMessage.getBytes());
+        os.close();
     }
 
     private void processEvent(PushEvent event) {
@@ -321,9 +328,14 @@ public class WebhookHandler implements HttpHandler {
                             + " exited with code " + exitCode);
                 }
             } else {
-                // Bukkit console command
-                Bukkit.getScheduler().runTask(plugin, () ->
-                        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), line));
+                if(Bukkit.isPrimaryThread()){
+                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), line);
+                }else {
+                    Bukkit.getScheduler().callSyncMethod(plugin,()->{
+                        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), line);
+                        return null;
+                    }).get();
+                }
             }
         }
     }

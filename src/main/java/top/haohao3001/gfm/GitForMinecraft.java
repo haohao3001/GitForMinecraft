@@ -97,7 +97,7 @@ public final class GitForMinecraft extends JavaPlugin {
         Permission receiveNotify = new Permission("gitforminecraft.notify.receive",
                 "接受Git的通知",
                 PermissionDefault.OP);
-        Permission reloadConfig = new Permission("gitforminecraft.notify.send",
+        Permission reloadConfig = new Permission("gitforminecraft.reloadconfig",
                 "重载配置文件",
                 PermissionDefault.OP);
         this.getServer().getPluginManager().addPermission(sendNotify);
