@@ -20,7 +20,7 @@ public class ChangeNotifier {
     /**
      * Notify all players with gfm.notify permission about file changes from a webhook push.
      */
-    public static void notifyChanges(String author, Set<String> added, Set<String> modified, Set<String> removed) {
+    public static void notifyChanges(String author, Set<String> added, Set<String> modified, Set<String> removed, List<String> commitMessages) {
         if (added.isEmpty() && modified.isEmpty() && removed.isEmpty()) return;
 
         Component header = Component.text()
@@ -33,6 +33,11 @@ public class ChangeNotifier {
                 .build();
 
         List<Component> lines = new ArrayList<>();
+
+        for (String msg : commitMessages) {
+            lines.add(Component.text("  \uD83D\uDCDD ", NamedTextColor.WHITE)
+                    .append(Component.text(msg, NamedTextColor.WHITE)));
+        }
 
         for (String file : added) {
             lines.add(Component.text("  + ", NamedTextColor.GREEN).append(Component.text(file, NamedTextColor.GREEN)));

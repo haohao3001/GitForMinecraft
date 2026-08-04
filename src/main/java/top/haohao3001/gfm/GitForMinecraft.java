@@ -1,7 +1,13 @@
 package top.haohao3001.gfm;
 
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
+import org.bukkit.Bukkit;
+import org.bukkit.World;
+import org.bukkit.block.Chest;
+import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.player.PlayerLoginEvent;
 import org.bukkit.permissions.Permission;
 import org.bukkit.permissions.PermissionDefault;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -14,11 +20,18 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.logging.Level;
 
 public final class GitForMinecraft extends JavaPlugin {
 
     private WebhookServer webhookServer;
+    private final ExecutorService scriptExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "GitForMinecraft-Script");
+        t.setDaemon(true);
+        return t;
+    });
 
     @Override
     public void onLoad() {
@@ -32,6 +45,8 @@ public final class GitForMinecraft extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        CommandSender a = Bukkit.getPlayer("123");
+        scriptExecutor.shutdownNow();
         if (webhookServer != null) {
             webhookServer.stop();
             webhookServer = null;
@@ -78,7 +93,7 @@ public final class GitForMinecraft extends JavaPlugin {
 
         // Start webhook server
         try {
-            WebhookHandler handler = new WebhookHandler(this, branch);
+            WebhookHandler handler = new WebhookHandler(this, branch, scriptExecutor);
             webhookServer = new WebhookServer(port, path, handler);
             webhookServer.start();
             getLogger().log(Level.INFO, "GitForMinecraft enabled. Webhook: http://0.0.0.0:" + port + "/" + path);
@@ -88,19 +103,14 @@ public final class GitForMinecraft extends JavaPlugin {
     }
 
     private void initServerCommand(){
-        this.getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, commands -> {
-            GitCommand.register(this,commands.registrar());
-        });
-        Permission sendNotify = new Permission("gitforminecraft.notify.send",
-                "发送Git通知",
-                PermissionDefault.OP);
+        this.getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, commands ->
+                GitCommand.register(this,commands.registrar()));
         Permission receiveNotify = new Permission("gitforminecraft.notify.receive",
                 "接受Git的通知",
                 PermissionDefault.OP);
         Permission reloadConfig = new Permission("gitforminecraft.reloadconfig",
                 "重载配置文件",
                 PermissionDefault.OP);
-        this.getServer().getPluginManager().addPermission(sendNotify);
         this.getServer().getPluginManager().addPermission(receiveNotify);
         this.getServer().getPluginManager().addPermission(reloadConfig);
     }

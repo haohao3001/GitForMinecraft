@@ -11,6 +11,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
 import java.util.logging.Level;
 
 /**
@@ -24,10 +25,12 @@ public class WebhookHandler implements HttpHandler {
     private final Gson gson = new Gson();
     private final GitForMinecraft plugin;
     private final String expectedBranch;
+    private final ExecutorService executor;
 
-    public WebhookHandler(GitForMinecraft plugin, String expectedBranch) {
+    public WebhookHandler(GitForMinecraft plugin, String expectedBranch, ExecutorService executor) {
         this.plugin = plugin;
         this.expectedBranch = expectedBranch;
+        this.executor = executor;
     }
 
     @Override
@@ -71,8 +74,8 @@ public class WebhookHandler implements HttpHandler {
 
             plugin.getLogger().log(Level.INFO, "Received valid webhook push to '" + branch + "'");
 
-            // Process asynchronously on Bukkit scheduler
-            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> processEvent(event));
+            // Process on the dedicated script thread
+            executor.submit(() -> processEvent(event));
 
             sendResponseAndCloseConnect(exchange,200,"200 OK");
 
@@ -103,6 +106,7 @@ public class WebhookHandler implements HttpHandler {
         CicdParseResult cicdResult = new CicdParseResult(new ArrayList<>(), new ArrayList<>(), false, false);
 
         String authorName = "Unknown";
+        List<String> commitMessages = new ArrayList<>();
 
         List<PushEvent.Commit> commits = event.getCommits();
         PushEvent.Commit headCommit = event.getHeadCommit();
@@ -117,6 +121,8 @@ public class WebhookHandler implements HttpHandler {
                 // Parse CICD commands from commit message and merge
                 if (commit.getMessage() != null) {
                     cicdResult = cicdResult.merge(parseCicdCommands(commit.getMessage()));
+                    String firstLine = commit.getMessage().split("\n", 2)[0];
+                    if (!firstLine.isBlank()) commitMessages.add(firstLine);
                 }
 
                 // Track author from latest commit
@@ -134,6 +140,8 @@ public class WebhookHandler implements HttpHandler {
                 if (headCommit.getRemoved() != null) removedFiles.addAll(headCommit.getRemoved());
                 if (headCommit.getMessage() != null) {
                     cicdResult = cicdResult.merge(parseCicdCommands(headCommit.getMessage()));
+                    String firstLine = headCommit.getMessage().split("\n", 2)[0];
+                    if (!firstLine.isBlank()) commitMessages.add(firstLine);
                 }
                 if (headCommit.getAuthor() != null) authorName = headCommit.getAuthor().getName();
             }
@@ -145,7 +153,7 @@ public class WebhookHandler implements HttpHandler {
                 + removedFiles.size() + " removed");
 
         // Notify online players of changes
-        ChangeNotifier.notifyChanges(authorName, addedFiles, modifiedFiles, removedFiles);
+        ChangeNotifier.notifyChanges(authorName, addedFiles, modifiedFiles, removedFiles, commitMessages);
 
         // Auto-pull: run scripts/auto-pull.sh if configured
         if (plugin.getConfig().getBoolean("webhook.auto-pull", false)) {
@@ -318,10 +326,16 @@ public class WebhookHandler implements HttpHandler {
             if (line.isEmpty() || line.startsWith("#")) continue;
 
             if (line.startsWith("! ")) {
-                // System command
+                // System command with output capture
                 ProcessBuilder pb = new ProcessBuilder(line.substring(2).split(" "));
-                pb.inheritIO();
+                pb.redirectErrorStream(true);
                 Process process = pb.start();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                    String outputLine;
+                    while ((outputLine = reader.readLine()) != null) {
+                        plugin.getLogger().log(Level.INFO, "[script:" + scriptName + "] " + outputLine);
+                    }
+                }
                 int exitCode = process.waitFor();
                 if (exitCode != 0) {
                     plugin.getLogger().log(Level.WARNING, "Script '" + scriptName + "' line " + (i + 1)
